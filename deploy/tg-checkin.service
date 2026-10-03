@@ -1,0 +1,18 @@
+[Unit]
+Description=TG Checkin - Telegram auto check-in service
+After=network.target
+
+[Service]
+Type=simple
+User=tgcheckin
+WorkingDirectory=/opt/tg-checkin
+Environment="PATH=/opt/tg-checkin/.venv/bin"
+EnvironmentFile=/opt/tg-checkin/.env
+ExecStart=/opt/tg-checkin/.venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

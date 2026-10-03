@@ -1,0 +1,8 @@
+# Normalise line endings: the project is deployed on Linux, so shell scripts
+# and source files must always be LF in the repository and in working copies.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.session binary

@@ -35,42 +35,70 @@ TG Checkin 是一个自托管的 Telegram 自动签到服务。它以**你的用
 
 ---
 
-## 🚀 快速开始（Docker，推荐）
+## 🚀 快速开始
 
 要求：一台装了 Docker 与 Docker Compose 的服务器（Linux，内存 512MB 足够）。
+
+### 方案 A：从源码构建（默认）
 
 ```bash
 git clone https://github.com/tmclsamxy/tg-checkin.git
 cd tg-checkin
-./scripts/deploy.sh
+docker compose up -d
 ```
 
-首次运行会**询问监听端口**（默认 `8000`，被占用时会自动推荐下一个可用端口），
-然后自动：生成 `.env` → 构建前后端 → 启动容器 → 等待健康检查通过。
-
-完成后打开 `http://<服务器IP>:<端口>`，用 `admin` / `admin123` 登录（**登录后请立刻改密码**）。
-
-### 自定义端口
+一条命令就够：compose 在本地没有镜像时会**自动构建**前后端并后台启动。
+打开 `http://<服务器IP>:8000`，用 `admin` / `admin123` 登录（**登录后请立刻改密码**）。
 
 ```bash
-./scripts/deploy.sh -p 9000            # 指定端口部署
-./scripts/deploy.sh -p 9000 update     # 换端口并重新构建
-./scripts/deploy.sh port               # 查看当前端口
-./scripts/deploy.sh -p 9000 port       # 只改端口（改完执行 update 生效）
-./scripts/deploy.sh -y                 # 非交互：全部用默认值，适合脚本化部署
+docker compose logs -f         # 看日志
+docker compose down            # 停止并移除容器
+docker compose up -d --build   # 源码更新后强制重新构建
 ```
 
-端口会写入 `.env` 的 `PORT=`，后续所有命令自动沿用，不用每次重复传。
+### 方案 B：用预构建镜像（不用装 Node、不用拉源码）
 
-常用的运维命令：
+CI 每次推送都会把镜像发布到 GHCR（`linux/amd64` + `linux/arm64`）。
+服务器上只需要一个 compose 文件：
 
 ```bash
-./scripts/deploy.sh update    # 更新代码并重新构建
-./scripts/deploy.sh logs      # 查看实时日志
-./scripts/deploy.sh restart   # 重启
-./scripts/deploy.sh stop      # 停止
-./scripts/deploy.sh status    # 查看状态
+curl -O https://raw.githubusercontent.com/tmclsamxy/tg-checkin/main/docker-compose.hub.yml
+docker compose -f docker-compose.hub.yml up -d
 ```
+
+升级：
+
+```bash
+docker compose -f docker-compose.hub.yml pull
+docker compose -f docker-compose.hub.yml up -d
+```
+
+### 自定义端口 / 管理员密码
+
+两个 compose 文件的变量都有默认值，**不建 `.env` 也能跑**。要改就在仓库根目录建一个：
+
+```bash
+cp .env.example .env
+```
+
+```ini
+PORT=9000                 # 监听端口
+ADMIN_PASSWORD=换成强密码  # 仅首次启动生效
+TZ=Asia/Shanghai
+```
+
+改完 `docker compose up -d` 重新创建容器即可。
+
+> 也可以用 `./scripts/deploy.sh`（可选）：交互选端口、占用时自动推荐空闲端口、
+> 启动后等健康检查并打印访问地址。它只是 `docker compose` 的一层封装，不用也能正常部署。
+>
+> ```bash
+> ./scripts/deploy.sh -p 9000   # 指定端口
+> ./scripts/deploy.sh port      # 查看当前端口
+> ./scripts/deploy.sh update    # 拉代码 + 重新构建
+> ./scripts/deploy.sh logs      # 日志
+> ./scripts/deploy.sh stop      # 停止
+> ```
 
 ### 反向代理（可选，推荐）
 
@@ -212,10 +240,11 @@ tg-checkin/
 │   ├── static/                  # 前端构建产物（gitignore）
 │   └── tests/
 ├── frontend/                    # Vue 3 + Vite 面板
-├── scripts/deploy.sh            # 一键部署 / 运维
+├── scripts/deploy.sh            # 可选的部署封装（端口选择 / 健康检查）
 ├── tools/import_legacy.py       # 旧版任务导入
 ├── Dockerfile                   # 多阶段构建（Node → Python）
-└── docker-compose.yml
+├── docker-compose.yml           # 从源码构建并启动
+└── docker-compose.hub.yml       # 拉取 GHCR 预构建镜像，免构建
 ```
 
 ---

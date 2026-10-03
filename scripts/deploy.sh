@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # TG Checkin —— 一键部署 / 运维脚本
 #
-#   ./scripts/deploy.sh                首次部署（构建并启动，会询问监听端口）
+# 本脚本只是 `docker compose` 的一层便利封装（建 .env / 选端口 / 等健康检查）。
+# 也可以完全不用它，直接：docker compose up -d
+#
+#   ./scripts/deploy.sh                首次部署（询问监听端口后启动）
 #   ./scripts/deploy.sh -p 9000        指定端口部署
 #   ./scripts/deploy.sh -p 9000 update 换端口并重新构建
 #   ./scripts/deploy.sh update         拉取最新代码后重新构建
@@ -33,7 +36,7 @@ ASSUME_YES=0
 COMMAND=""
 ENV_JUST_CREATED=0
 
-usage() { sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^#\{1,2\} \{0,1\}//'; }
+usage() { sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^#\{1,2\} \{0,1\}//'; }
 
 # --------------------------------------------------------------- .env 读写
 env_get() {
@@ -208,8 +211,10 @@ cmd_up() {
   local compose; compose="$(detect_compose)"
   prepare_env
   resolve_port
-  info "开始构建镜像（首次约需 3-5 分钟）..."
-  PORT="$PORT" $compose up -d --build
+  # 等价手工命令：docker compose up -d
+  # compose 在本地没有镜像时会自动构建，所以这里不再强制 --build。
+  info "启动容器（首次会自动构建镜像，约 3-5 分钟）..."
+  PORT="$PORT" $compose up -d
   wait_healthy
   echo
   printf '%s部署完成%s\n' "$BOLD" "$OFF"

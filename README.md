@@ -304,6 +304,31 @@ tg-checkin/
 **面板打不开 / 端口冲突？**
 改 `.env` 里的 `PORT`，或 `docker-compose.yml` 的端口映射。
 
+**`docker compose up -d` 报 iptables / DOCKER-FORWARD 错误？**
+
+```
+failed to create network tg-checkin_default: Failed to Setup IP tables:
+Unable to enable ACCEPT OUTGOING rule ... DOCKER-FORWARD: No chain/target/match
+```
+
+Docker 的 iptables 链没建起来（VPS 上很常见）。按顺序试：
+
+```bash
+systemctl restart docker                        # 1. 多数情况直接恢复
+
+# 2. 仍失败：多半是 iptables 后端（nft / legacy）和 Docker 不一致
+iptables --version
+update-alternatives --set iptables /usr/sbin/iptables-legacy
+update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+systemctl restart docker
+
+# 3. 兜底：直接用宿主机网络，完全绕开网桥与 iptables
+docker compose -f docker-compose.hostnet.yml up -d
+```
+
+`docker-compose.hostnet.yml` 走 `network_mode: host`，容器直接占用宿主机端口，
+不需要端口映射；换端口在 `.env` 里设 `PORT` 即可。
+
 ---
 
 ## 🧑‍💻 参与开发

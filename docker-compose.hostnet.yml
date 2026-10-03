@@ -1,0 +1,35 @@
+# 兜底方案：使用宿主机网络（host network），绕开 Docker 网桥与 iptables。
+#
+# 适用场景：VPS 上 Docker 建不了网桥网络，报错类似
+#   failed to create network ...: Failed to Setup IP tables:
+#   Unable to enable ACCEPT OUTGOING rule ... DOCKER-FORWARD: No chain/target/match
+# 常见于 iptables 后端不匹配（nft / legacy 混用）、或服务商禁用了 iptables 的机器。
+#
+#   docker compose -f docker-compose.hostnet.yml up -d
+#
+# 说明：
+#   - host 模式下容器直接占用宿主机的 8000 端口，不支持 ports 映射
+#   - 想换端口：在 .env 里设置 PORT=9000（容器内的 uvicorn 会读取它）
+#   - 端口被占用时先看看是谁在占：ss -lntp | grep 8000
+
+name: tg-checkin
+
+services:
+  tg-checkin:
+    image: ghcr.io/tmclsamxy/tg-checkin:latest
+    pull_policy: always
+    container_name: tg-checkin
+    restart: unless-stopped
+
+    network_mode: host
+
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      DATA_DIR: /app/data
+      PORT: ${PORT:-8000}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      SECRET_KEY: ${SECRET_KEY:-}
+
+    volumes:
+      - ./data:/app/data

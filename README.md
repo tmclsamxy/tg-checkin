@@ -304,6 +304,26 @@ tg-checkin/
 **面板打不开 / 端口冲突？**
 改 `.env` 里的 `PORT`，或 `docker-compose.yml` 的端口映射。
 
+**容器一直 `Restarting (1)`，端口连不上？**
+
+镜像以非 root 用户（uid 10001）运行，而 Docker 为 bind mount 创建的宿主目录是 root 属主，
+容器内写不了 SQLite，启动即崩溃。日志里会看到 `PermissionError`。
+
+```bash
+docker logs tg-checkin --tail 40      # 确认是不是权限问题
+chown -R 10001:10001 data            # 修数据目录属主
+docker compose up -d
+```
+
+不想管属主就改用**具名卷**（Docker 会自动继承镜像内的属主）：把 `docker-compose.yml` 里的
+
+```yaml
+    volumes:
+      - tg-checkin-data:/app/data
+volumes:
+  tg-checkin-data:
+```
+
 **`docker compose up -d` 报 iptables / DOCKER-FORWARD 错误？**
 
 ```

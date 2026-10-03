@@ -46,7 +46,15 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _prepare(self) -> "Settings":
         self.data_dir = Path(self.data_dir).expanduser().resolve()
-        self.data_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise RuntimeError(_data_dir_help(self.data_dir, exc)) from exc
+
+        # 容器以非 root 用户运行，挂载的宿主目录常常是其写不进去的，
+        # 否则后面只会抛出一个看不懂的 PermissionError。
+        if not os.access(self.data_dir, os.W_OK | os.X_OK):
+            raise RuntimeError(_data_dir_help(self.data_dir, None))
 
         if not self.database_url:
             self.database_url = f"sqlite+aiosqlite:///{self.data_dir / 'tgcheckin.db'}"
@@ -63,6 +71,21 @@ class Settings(BaseSettings):
                 except OSError:  # pragma: no cover - Windows
                     pass
         return self
+
+
+def _data_dir_help(path: Path, error: Exception | None) -> str:
+    detail = f"（{error}）" if error else ""
+    return (
+        f"数据目录不可写：{path} {detail}\n"
+        "容器以 uid 10001 运行，而 bind mount 的宿主目录通常是 Docker 以 root 创建的。\n"
+        "解决办法二选一：\n"
+        f"  1. 在宿主机执行：chown -R 10001:10001 <你挂载的目录>\n"
+        "  2. 改用 Docker 具名卷（Docker 会自动继承镜像内的属主）：\n"
+        "       volumes:\n"
+        "         - tg-checkin-data:/app/data\n"
+        "       volumes:\n"
+        "         tg-checkin-data:"
+    )
 
 
 settings = Settings()

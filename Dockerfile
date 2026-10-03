@@ -4,8 +4,9 @@
 FROM node:22-alpine AS frontend
 
 WORKDIR /build
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install --no-audit --no-fund
+COPY frontend/package.json frontend/package-lock.json ./
+# `npm ci` guarantees the image matches the lockfile exactly.
+RUN npm ci --no-audit --no-fund
 
 COPY frontend/ ./
 # override outDir so the assets land inside the build context

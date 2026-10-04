@@ -11,11 +11,13 @@ from telethon import errors
 
 from ..models import Task
 from ..settings_store import RuntimeConfig
+from .captcha import CaptchaSolution, solve_question
 
 logger = logging.getLogger(__name__)
 
 MAX_SCAN_MESSAGES = 12
 MAX_REPLY_MESSAGES = 5
+CAPTCHA_SCAN_MESSAGES = 8
 
 
 class TaskError(Exception):
@@ -139,6 +141,50 @@ async def _find_button_message(client, entity, task: Task):
     return None, None
 
 
+async def _solve_captchas(
+    client, entity, baseline_id: int, cfg: RuntimeConfig
+) -> list[CaptchaSolution]:
+    """Answer human-verification prompts posted after ``baseline_id``.
+
+    Runs up to ``cfg.captcha_max_rounds`` times so multi-step challenges
+    (answer one question, get another) are handled too. Messages that cannot be
+    solved with confidence are left untouched, and the loop bails out as soon as
+    nothing new matches. Returns the solved rounds, newest last.
+    """
+    rounds = max(0, int(cfg.captcha_max_rounds or 0))
+    solved: list[CaptchaSolution] = []
+    cursor = baseline_id
+
+    for _ in range(rounds):
+        match = None
+        async for message in client.iter_messages(entity, min_id=cursor, limit=CAPTCHA_SCAN_MESSAGES):
+            buttons = list(_iter_buttons(message))
+            if not buttons:
+                continue
+            labels = [str(getattr(button, "text", "") or "") for button in buttons]
+            solution = solve_question(_extract_text(message), labels)
+            if solution is not None:
+                match = (message, buttons[solution.index], solution)
+                break
+
+        if match is None:
+            break
+
+        message, button, solution = match
+        data = _button_callback_data(button)
+        click_kwargs = {"data": data} if data is not None else {"text": solution.label}
+        await message.click(**click_kwargs)
+
+        cursor = max(cursor, message.id)
+        solved.append(solution)
+        logger.info("任务已自动通过人机验证：%s → %s", solution.question, solution.label)
+
+        # Give the bot time to send the next round (or the real result).
+        await asyncio.sleep(max(1, cfg.captcha_wait_seconds))
+
+    return solved
+
+
 async def _collect_replies(client, entity, baseline_id: int, *, with_sender: bool) -> str:
     """Collect messages newer than `baseline_id`, oldest first."""
     collected: list[str] = []
@@ -239,4 +285,14 @@ async def _execute_once(client, task: Task, cfg: RuntimeConfig) -> str:
         raise TaskError(f"不支持的任务类型：{task.action_type}")
 
     await asyncio.sleep(max(1, cfg.reply_wait_seconds))
-    return await _collect_replies(client, entity, baseline, with_sender=task.target_type == "group")
+
+    verified: list[str] = []
+    if cfg.captcha_enabled and getattr(task, "auto_captcha", True):
+        for solution in await _solve_captchas(client, entity, baseline, cfg):
+            verified.append(solution.summary)
+
+    reply = await _collect_replies(client, entity, baseline, with_sender=task.target_type == "group")
+    if verified:
+        note = "🤖 已自动通过人机验证：" + "；".join(f"「{item}」" for item in verified)
+        return f"{note}\n{reply}".strip()
+    return reply

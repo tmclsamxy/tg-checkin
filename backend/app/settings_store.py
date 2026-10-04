@@ -42,6 +42,9 @@ def to_settings_out(cfg: AppSetting, *, connected: bool = False, user: str | Non
         start_command_delay=cfg.start_command_delay,
         task_interval_seconds=cfg.task_interval_seconds,
         max_retries=cfg.max_retries,
+        captcha_enabled=cfg.captcha_enabled,
+        captcha_max_rounds=cfg.captcha_max_rounds,
+        captcha_wait_seconds=cfg.captcha_wait_seconds,
         telegram_connected=connected,
         telegram_user=user,
         has_session=bool(cfg.session_enc),
@@ -61,7 +64,7 @@ def apply_settings_update(cfg: AppSetting, payload: SettingsUpdate) -> None:
         if value:
             cfg.api_hash_enc = encrypt_secret(value)
 
-    for field in ("schedule_enabled", "notify_enabled", "notify_only_on_failure"):
+    for field in ("schedule_enabled", "notify_enabled", "notify_only_on_failure", "captcha_enabled"):
         if data.get(field) is not None:
             setattr(cfg, field, bool(data[field]))
 
@@ -74,6 +77,8 @@ def apply_settings_update(cfg: AppSetting, payload: SettingsUpdate) -> None:
         "start_command_delay",
         "task_interval_seconds",
         "max_retries",
+        "captcha_max_rounds",
+        "captcha_wait_seconds",
     ):
         if data.get(field) is not None:
             setattr(cfg, field, int(data[field]))
@@ -92,6 +97,9 @@ class RuntimeConfig:
         "start_command_delay",
         "task_interval_seconds",
         "max_retries",
+        "captcha_enabled",
+        "captcha_max_rounds",
+        "captcha_wait_seconds",
     )
 
     def __init__(self, cfg: AppSetting) -> None:
@@ -99,3 +107,6 @@ class RuntimeConfig:
         self.start_command_delay = cfg.start_command_delay
         self.task_interval_seconds = cfg.task_interval_seconds
         self.max_retries = cfg.max_retries
+        self.captcha_enabled = cfg.captcha_enabled
+        self.captcha_max_rounds = cfg.captcha_max_rounds
+        self.captcha_wait_seconds = cfg.captcha_wait_seconds

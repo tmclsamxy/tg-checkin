@@ -54,6 +54,11 @@ class AppSetting(Base):
     task_interval_seconds: Mapped[int] = mapped_column(Integer, default=5)
     max_retries: Mapped[int] = mapped_column(Integer, default=1)
 
+    # Human-verification (captcha) auto answering
+    captcha_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    captcha_max_rounds: Mapped[int] = mapped_column(Integer, default=2)
+    captcha_wait_seconds: Mapped[int] = mapped_column(Integer, default=5)
+
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 
@@ -76,6 +81,7 @@ class Task(Base):
     button_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
     callback_data: Mapped[str | None] = mapped_column(String(255), nullable=True)
     start_command: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    auto_captcha: Mapped[bool] = mapped_column(Boolean, default=True)
 
     last_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     last_message: Mapped[str | None] = mapped_column(Text, nullable=True)

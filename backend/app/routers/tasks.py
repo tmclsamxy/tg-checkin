@@ -58,6 +58,7 @@ def _apply_payload(task: Task, payload: TaskCreate | TaskUpdate) -> None:
         "button_text",
         "callback_data",
         "start_command",
+        "auto_captcha",
     ):
         if field in data:
             setattr(task, field, data[field])

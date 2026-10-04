@@ -62,6 +62,10 @@ class SettingsOut(BaseModel):
     task_interval_seconds: int = 5
     max_retries: int = 1
 
+    captcha_enabled: bool = True
+    captcha_max_rounds: int = 2
+    captcha_wait_seconds: int = 5
+
     telegram_connected: bool = False
     telegram_user: str | None = None
     has_session: bool = False
@@ -85,6 +89,10 @@ class SettingsUpdate(BaseModel):
     start_command_delay: int | None = Field(default=None, ge=0, le=60)
     task_interval_seconds: int | None = Field(default=None, ge=0, le=300)
     max_retries: int | None = Field(default=None, ge=0, le=5)
+
+    captcha_enabled: bool | None = None
+    captcha_max_rounds: int | None = Field(default=None, ge=0, le=5)
+    captcha_wait_seconds: int | None = Field(default=None, ge=1, le=60)
 
     @field_validator("schedule_time")
     @classmethod
@@ -115,6 +123,7 @@ class TaskBase(BaseModel):
     button_text: str | None = None
     callback_data: str | None = None
     start_command: str | None = None
+    auto_captcha: bool = True
 
     @field_validator("bot_username")
     @classmethod
@@ -167,6 +176,7 @@ class TaskOut(BaseModel):
     button_text: str | None
     callback_data: str | None
     start_command: str | None
+    auto_captcha: bool
     last_status: str | None
     last_message: str | None
     last_run_at: datetime | None

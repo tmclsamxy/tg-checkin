@@ -115,6 +115,7 @@ onMounted(refresh)
               </td>
               <td>
                 <span class="badge badge-brand">{{ task.action_type === 'message' ? '消息' : '按钮' }}</span>
+                <span v-if="task.auto_captcha" class="badge badge-muted" title="自动识别人机验证并作答">自动验证</span>
                 <div class="cell-sub" style="margin-top: 4px">{{ describe(task) }}</div>
               </td>
               <td>

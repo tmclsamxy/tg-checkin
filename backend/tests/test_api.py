@@ -69,16 +69,20 @@ def test_task_crud(client, auth_headers):
     task = resp.json()
     assert task["bot_username"] == "@test_bot"
     assert task["target"] == "@test_bot"
+    assert task["auto_captcha"] is True  # on by default
 
     task_id = task["id"]
     assert client.get("/api/tasks", headers=auth_headers).json()
 
     resp = client.put(
-        f"/api/tasks/{task_id}", json={**payload, "name": "改名后", "enabled": False}, headers=auth_headers
+        f"/api/tasks/{task_id}",
+        json={**payload, "name": "改名后", "enabled": False, "auto_captcha": False},
+        headers=auth_headers,
     )
     assert resp.status_code == 200
     assert resp.json()["name"] == "改名后"
     assert resp.json()["enabled"] is False
+    assert resp.json()["auto_captcha"] is False
 
     resp = client.post(f"/api/tasks/{task_id}/toggle", headers=auth_headers)
     assert resp.json()["enabled"] is True
@@ -105,10 +109,20 @@ def test_settings_roundtrip(client, auth_headers):
     resp = client.get("/api/settings", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["has_api_hash"] is False
+    assert resp.json()["captcha_enabled"] is True
+    assert resp.json()["captcha_max_rounds"] == 2
 
     resp = client.put(
         "/api/settings",
-        json={"api_id": "123456", "api_hash": "abcdef0123456789", "schedule_time": "07:30", "timezone": "Asia/Shanghai"},
+        json={
+            "api_id": "123456",
+            "api_hash": "abcdef0123456789",
+            "schedule_time": "07:30",
+            "timezone": "Asia/Shanghai",
+            "captcha_enabled": False,
+            "captcha_max_rounds": 3,
+            "captcha_wait_seconds": 6,
+        },
         headers=auth_headers,
     )
     assert resp.status_code == 200, resp.text
@@ -117,11 +131,15 @@ def test_settings_roundtrip(client, auth_headers):
     assert body["has_api_hash"] is True
     assert body["api_hash_masked"].endswith("6789")
     assert body["schedule_time"] == "07:30"
+    assert body["captcha_enabled"] is False
+    assert body["captcha_max_rounds"] == 3
+    assert body["captcha_wait_seconds"] == 6
 
     # secrets are never returned in clear text
     assert "abcdef0123456789" not in str(body)
 
     assert client.put("/api/settings", json={"schedule_time": "25:99"}, headers=auth_headers).status_code == 422
+    assert client.put("/api/settings", json={"captcha_max_rounds": 99}, headers=auth_headers).status_code == 422
 
 
 def test_run_without_telegram_session(client, auth_headers):

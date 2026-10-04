@@ -23,7 +23,10 @@ const form = reactive({
   reply_wait_seconds: 8,
   start_command_delay: 5,
   task_interval_seconds: 5,
-  max_retries: 1
+  max_retries: 1,
+  captcha_enabled: true,
+  captcha_max_rounds: 2,
+  captcha_wait_seconds: 5
 })
 
 const pwd = reactive({ old_password: '', new_password: '', confirm: '' })
@@ -47,7 +50,10 @@ async function refresh() {
       reply_wait_seconds: s.reply_wait_seconds,
       start_command_delay: s.start_command_delay,
       task_interval_seconds: s.task_interval_seconds,
-      max_retries: s.max_retries
+      max_retries: s.max_retries,
+      captcha_enabled: s.captcha_enabled,
+      captcha_max_rounds: s.captcha_max_rounds,
+      captcha_wait_seconds: s.captcha_wait_seconds
     })
     form.api_hash = ''
     form.notify_bot_token = ''
@@ -167,6 +173,38 @@ onMounted(refresh)
             <div class="field">
               <label class="label">失败重试次数</label>
               <input v-model.number="form.max_retries" class="input" type="number" min="0" max="5" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h2>人机验证</h2></div>
+        <div class="card-body">
+          <div class="switch-row">
+            <div>
+              <div style="font-weight: 600">自动解答人机验证</div>
+              <div class="hint">
+                部分机器人签到前会弹出算术验证码（例如「请计算 11 + 15 = ?」）。开启后会识别题目、
+                算出答案并点击正确选项；识别不出来时保持原样，不会乱点。单个任务还可在任务设置里单独关闭。
+              </div>
+            </div>
+            <label class="switch">
+              <input v-model="form.captcha_enabled" type="checkbox" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="grid grid-2" style="margin-top: 16px">
+            <div class="field">
+              <label class="label">最多连续作答轮数</label>
+              <input v-model.number="form.captcha_max_rounds" class="input" type="number" min="0" max="5" />
+              <div class="hint">有些机器人会连续出题，设为 0 表示关闭。</div>
+            </div>
+            <div class="field">
+              <label class="label">作答后等待秒数</label>
+              <input v-model.number="form.captcha_wait_seconds" class="input" type="number" min="1" max="60" />
+              <div class="hint">点击选项后等待机器人继续回复的时间。</div>
             </div>
           </div>
         </div>

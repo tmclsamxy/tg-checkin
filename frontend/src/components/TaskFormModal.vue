@@ -23,7 +23,8 @@ function blank() {
     button_type: 'text',
     button_text: '',
     callback_data: '',
-    start_command: ''
+    start_command: '',
+    auto_captcha: true
   }
 }
 
@@ -46,7 +47,8 @@ const EDITABLE_FIELDS = [
   'button_type',
   'button_text',
   'callback_data',
-  'start_command'
+  'start_command',
+  'auto_captcha'
 ]
 
 async function submit() {
@@ -179,6 +181,19 @@ async function submit() {
             <div class="hint">机器人内联按钮的 callback_data，可用 Bot 的 raw 数据查看。</div>
           </div>
         </template>
+
+        <div class="switch-row">
+          <div>
+            <div style="font-weight: 600">自动通过人机验证</div>
+            <div class="hint">
+              遇到「请计算 11 + 15 = ?」这类验证码时自动算出答案并点击正确选项。无法确定答案时不会乱点。
+            </div>
+          </div>
+          <label class="switch">
+            <input v-model="form.auto_captcha" type="checkbox" />
+            <span class="slider"></span>
+          </label>
+        </div>
 
         <div class="switch-row">
           <div>

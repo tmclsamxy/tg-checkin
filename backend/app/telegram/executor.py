@@ -287,7 +287,8 @@ async def _execute_once(client, task: Task, cfg: RuntimeConfig) -> str:
     await asyncio.sleep(max(1, cfg.reply_wait_seconds))
 
     verified: list[str] = []
-    if cfg.captcha_enabled and getattr(task, "auto_captcha", True):
+    # A NULL column (row written before the migration) must keep the feature on.
+    if cfg.captcha_enabled and getattr(task, "auto_captcha", True) is not False:
         for solution in await _solve_captchas(client, entity, baseline, cfg):
             verified.append(solution.summary)
 

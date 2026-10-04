@@ -178,7 +178,13 @@ a { color: var(--brand); text-decoration: none; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; }
 .switch-row + .switch-row { border-top: 1px solid var(--border); }
 
-.switch { position: relative; width: 40px; height: 22px; flex: 0 0 40px; }
+/* A <label> is inline by default, so width/height would be ignored outside a
+   flex row (e.g. inside a table cell) and the slider would collapse onto its
+   neighbours. Force a block-level box everywhere. */
+.switch {
+  position: relative; display: inline-block; vertical-align: middle;
+  width: 40px; height: 22px; flex: 0 0 40px;
+}
 .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
 .slider {
   position: absolute; inset: 0; background: #cbd5e1; border-radius: 999px; cursor: pointer;
@@ -211,7 +217,7 @@ tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--surface-2); }
 .cell-strong { font-weight: 600; }
 .cell-sub { font-size: 12px; color: var(--muted); }
-.row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.row-actions { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
 
 /* ----------------------------------------------------------------- badge */
 .badge {

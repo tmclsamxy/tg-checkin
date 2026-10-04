@@ -177,47 +177,65 @@ onMounted(refresh)
               <td class="text-sm muted" style="white-space: nowrap">
                 {{ account.last_connected_at ? formatRelative(account.last_connected_at) : '—' }}
               </td>
-              <td style="text-align: right; white-space: nowrap">
-                <button
-                  v-if="!account.connected && account.has_session"
-                  class="btn btn-sm"
-                  :disabled="busyId === account.id"
-                  @click="connect(account)"
-                >
-                  恢复会话
-                </button>
-                <button
-                  v-else-if="account.connected"
-                  class="btn btn-sm"
-                  :disabled="busyId === account.id"
-                  @click="disconnect(account)"
-                >
-                  断开
-                </button>
-                <button
-                  v-else
-                  class="btn btn-sm btn-primary"
-                  :disabled="busyId === account.id"
-                  @click="modal = { mode: 'relogin', account }"
-                >
-                  登录
-                </button>
+              <td style="text-align: right">
+                <div class="row-actions">
+                  <button
+                    v-if="!account.connected && account.has_session"
+                    class="btn btn-sm"
+                    :disabled="busyId === account.id"
+                    @click="connect(account)"
+                  >
+                    恢复会话
+                  </button>
+                  <button
+                    v-else-if="account.connected"
+                    class="btn btn-sm"
+                    :disabled="busyId === account.id"
+                    @click="disconnect(account)"
+                  >
+                    断开
+                  </button>
+                  <button
+                    v-else
+                    class="btn btn-sm btn-primary"
+                    :disabled="busyId === account.id"
+                    @click="modal = { mode: 'relogin', account }"
+                  >
+                    登录
+                  </button>
 
-                <label class="switch" style="margin: 0 8px; vertical-align: middle" :title="account.enabled ? '已启用' : '已停用'">
-                  <input type="checkbox" :checked="account.enabled" @change="toggle(account)" />
-                  <span class="slider"></span>
-                </label>
+                  <label class="switch" :title="account.enabled ? '已启用，点击停用' : '已停用，点击启用'">
+                    <input type="checkbox" :checked="account.enabled" @change="toggle(account)" />
+                    <span class="slider"></span>
+                  </label>
 
-                <button class="btn btn-sm" @click="modal = { mode: 'edit', account }">
-                  <AppIcon name="cog" size="14" />
-                </button>
-                <button class="btn btn-sm" @click="modal = { mode: 'relogin', account }">重新登录</button>
-                <button class="btn btn-sm btn-danger" :disabled="busyId === account.id" @click="logout(account)">
-                  退出登录
-                </button>
-                <button class="btn btn-sm btn-danger" :disabled="busyId === account.id" @click="remove(account)">
-                  删除
-                </button>
+                  <button class="btn btn-sm btn-ghost" title="编辑账号" @click="modal = { mode: 'edit', account }">
+                    <AppIcon name="cog" size="14" />
+                  </button>
+                  <button
+                    class="btn btn-sm btn-ghost"
+                    title="重新登录（换手机号或会话失效时用）"
+                    @click="modal = { mode: 'relogin', account }"
+                  >
+                    <AppIcon name="refresh" size="14" />
+                  </button>
+                  <button
+                    class="btn btn-sm btn-ghost"
+                    title="退出登录并清除会话"
+                    :disabled="busyId === account.id"
+                    @click="logout(account)"
+                  >
+                    <AppIcon name="logout" size="14" />
+                  </button>
+                  <button
+                    class="btn btn-sm btn-danger"
+                    title="删除账号（名下任务改为使用默认账号）"
+                    :disabled="busyId === account.id"
+                    @click="remove(account)"
+                  >
+                    <AppIcon name="trash" size="14" />
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>

@@ -22,14 +22,15 @@ async def get_app_settings(session: AsyncSession) -> AppSetting:
     return cfg
 
 
-def to_settings_out(cfg: AppSetting, *, connected: bool = False, user: str | None = None) -> SettingsOut:
-    api_hash = decrypt_secret(cfg.api_hash_enc)
+def to_settings_out(
+    cfg: AppSetting,
+    *,
+    account_count: int = 0,
+    connected_account_count: int = 0,
+    task_count: int = 0,
+) -> SettingsOut:
     bot_token = decrypt_secret(cfg.notify_bot_token_enc)
     return SettingsOut(
-        api_id=cfg.api_id,
-        api_hash_masked=mask_secret(api_hash),
-        has_api_hash=bool(api_hash),
-        phone=cfg.phone,
         schedule_enabled=cfg.schedule_enabled,
         schedule_time=cfg.schedule_time,
         timezone=cfg.timezone,
@@ -38,6 +39,7 @@ def to_settings_out(cfg: AppSetting, *, connected: bool = False, user: str | Non
         has_notify_bot_token=bool(bot_token),
         notify_receiver_id=cfg.notify_receiver_id,
         notify_only_on_failure=cfg.notify_only_on_failure,
+        notify_account_id=cfg.notify_account_id,
         reply_wait_seconds=cfg.reply_wait_seconds,
         start_command_delay=cfg.start_command_delay,
         task_interval_seconds=cfg.task_interval_seconds,
@@ -45,24 +47,15 @@ def to_settings_out(cfg: AppSetting, *, connected: bool = False, user: str | Non
         captcha_enabled=cfg.captcha_enabled,
         captcha_max_rounds=cfg.captcha_max_rounds,
         captcha_wait_seconds=cfg.captcha_wait_seconds,
-        telegram_connected=connected,
-        telegram_user=user,
-        has_session=bool(cfg.session_enc),
+        account_count=account_count,
+        connected_account_count=connected_account_count,
+        task_count=task_count,
     )
 
 
 def apply_settings_update(cfg: AppSetting, payload: SettingsUpdate) -> None:
     """Apply a partial update. Empty secrets are ignored so the UI can leave them blank."""
     data = payload.model_dump(exclude_unset=True)
-
-    if "api_id" in data and data["api_id"] is not None:
-        cfg.api_id = str(data["api_id"]).strip() or None
-    if "phone" in data and data["phone"] is not None:
-        cfg.phone = str(data["phone"]).strip() or None
-    if "api_hash" in data:
-        value = (data["api_hash"] or "").strip()
-        if value:
-            cfg.api_hash_enc = encrypt_secret(value)
 
     for field in ("schedule_enabled", "notify_enabled", "notify_only_on_failure", "captcha_enabled"):
         if data.get(field) is not None:
@@ -82,6 +75,11 @@ def apply_settings_update(cfg: AppSetting, payload: SettingsUpdate) -> None:
     ):
         if data.get(field) is not None:
             setattr(cfg, field, int(data[field]))
+
+    # explicit null means "let any connected account send notifications"
+    if "notify_account_id" in data:
+        value = data["notify_account_id"]
+        cfg.notify_account_id = int(value) if value else None
 
     if "notify_bot_token" in data:
         value = (data["notify_bot_token"] or "").strip()

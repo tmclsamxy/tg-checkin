@@ -5,20 +5,23 @@ import { toast, errorText, formatDateTime } from '../store'
 
 const runs = ref([])
 const tasks = ref([])
+const accounts = ref([])
 const stats = ref(null)
 const loading = ref(true)
-const filters = ref({ task_id: '', status: '', limit: 100 })
+const filters = ref({ task_id: '', account_id: '', status: '', limit: 100 })
 
 async function refresh() {
   loading.value = true
   try {
-    const [r, t, s] = await Promise.all([
+    const [r, t, a, s] = await Promise.all([
       api.listRuns(filters.value),
       api.listTasks(),
+      api.listAccounts(),
       api.runStats()
     ])
     runs.value = r
     tasks.value = t
+    accounts.value = a
     stats.value = s
   } catch (err) {
     toast(errorText(err), 'error')
@@ -70,6 +73,10 @@ onMounted(refresh)
             <option value="">全部任务</option>
             <option v-for="t in tasks" :key="t.id" :value="t.id">{{ t.name }}</option>
           </select>
+          <select v-model="filters.account_id" class="select" style="width: auto" @change="refresh">
+            <option value="">全部账号</option>
+            <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+          </select>
           <select v-model="filters.status" class="select" style="width: auto" @change="refresh">
             <option value="">全部状态</option>
             <option value="success">成功</option>
@@ -89,6 +96,7 @@ onMounted(refresh)
             <tr>
               <th>时间</th>
               <th>任务</th>
+              <th>账号</th>
               <th>状态</th>
               <th>结果 / 机器人回复</th>
               <th>触发</th>
@@ -102,6 +110,7 @@ onMounted(refresh)
                 <div class="cell-strong">{{ r.task_name }}</div>
                 <div class="cell-sub mono">{{ r.target }}</div>
               </td>
+              <td class="text-sm">{{ r.account_name || '—' }}</td>
               <td>
                 <span class="badge" :class="r.status === 'success' ? 'badge-success' : 'badge-failed'">
                   <span class="dot"></span>{{ r.status === 'success' ? '成功' : '失败' }}

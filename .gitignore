@@ -16,11 +16,15 @@ backend/app/static/
 # ---- runtime data / secrets ----
 data/
 .devdata/
+.devdata*/
+.acctdev/
 .pytest-data/
 .imptest*/
 .env
 *.session
 *.session-journal
+# scratch output from local debugging
+*-out.txt
 
 # ---- editors / OS ----
 .vscode/

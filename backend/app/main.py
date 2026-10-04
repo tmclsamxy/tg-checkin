@@ -15,7 +15,7 @@ from sqlalchemy import select
 from .config import settings
 from .database import SessionLocal, dispose_db, init_db
 from .models import User
-from .routers import auth, runs, settings as settings_router, system, tasks, telegram
+from .routers import accounts, auth, runs, settings as settings_router, system, tasks
 from .scheduler import checkin_scheduler
 from .security import hash_password
 from .settings_store import get_app_settings
@@ -52,12 +52,11 @@ async def _seed_admin() -> None:
 
 
 async def _restore_telegram() -> None:
-    """Best-effort: reconnect the saved session so the panel is ready immediately."""
+    """Best-effort: reconnect every saved session so the panel is ready immediately."""
     try:
-        await telegram_manager.ensure_client()
-        logger.info("Telegram 会话已恢复：%s", telegram_manager.user_label)
+        await telegram_manager.restore_all()
     except Exception as exc:  # noqa: BLE001
-        logger.info("Telegram 未自动连接（%s），请在面板中完成登录", exc)
+        logger.info("Telegram 账号未自动连接（%s），请在面板中完成登录", exc)
 
 
 async def _bootstrap_scheduler() -> None:
@@ -107,7 +106,7 @@ def create_app() -> FastAPI:
         return JSONResponse({"detail": "服务器内部错误"}, status_code=500)
 
     app.include_router(auth.router)
-    app.include_router(telegram.router)
+    app.include_router(accounts.router)
     app.include_router(settings_router.router)
     app.include_router(tasks.router)
     app.include_router(runs.router)

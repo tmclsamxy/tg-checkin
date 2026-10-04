@@ -6,12 +6,6 @@ three screenshots in the issue report.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-BACKEND_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(BACKEND_DIR))
-
 from app.telegram.captcha import looks_like_captcha, solve_question  # noqa: E402
 
 ARITHMETIC_PROMPT = "🤖 人机验证：请计算 11 + 15 = ？\n请选择正确答案继续操作："

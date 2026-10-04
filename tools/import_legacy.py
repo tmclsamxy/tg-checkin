@@ -6,6 +6,10 @@ Usage:
 
     # or point at another data directory
     DATA_DIR=/var/lib/tgcheckin python tools/import_legacy.py tasks.json
+
+    # assign every imported task to a specific account (id or name)
+    python tools/import_legacy.py tasks.json --account 2
+    python tools/import_legacy.py tasks.json --account 小号一
 """
 
 from __future__ import annotations
@@ -19,10 +23,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import or_, select  # noqa: E402
 
 from app.database import SessionLocal, dispose_db, init_db  # noqa: E402
-from app.models import Task  # noqa: E402
+from app.models import Account, Task  # noqa: E402
 
 
 def convert(raw: dict) -> Task:
@@ -63,7 +67,7 @@ def convert(raw: dict) -> Task:
     return task
 
 
-async def run(path: Path, *, dry_run: bool) -> int:
+async def run(path: Path, *, dry_run: bool, account: str | None = None) -> int:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if isinstance(payload, dict):
         payload = payload.get("tasks", [])
@@ -87,6 +91,7 @@ async def run(path: Path, *, dry_run: bool) -> int:
     await init_db()
     imported = 0
     async with SessionLocal() as session:
+        account_id = await _resolve_account(session, account)
         max_order = await session.scalar(select(Task.sort_order).order_by(Task.sort_order.desc()).limit(1)) or 0
         existing = {
             signature(t) for t in (await session.execute(select(Task))).scalars().all()
@@ -94,6 +99,7 @@ async def run(path: Path, *, dry_run: bool) -> int:
 
         for index, raw in enumerate(payload, start=1):
             task = convert(raw)
+            task.account_id = account_id
             target = task.bot_username or task.group_id
             if signature(task) in existing:
                 print(f"  跳过（已存在）: {task.name} -> {target}")
@@ -113,17 +119,34 @@ async def run(path: Path, *, dry_run: bool) -> int:
     return imported
 
 
+async def _resolve_account(session, account: str | None) -> int | None:
+    """Map an id or a name to an account id; ``None`` means "use the default"."""
+    if account is None:
+        return None
+
+    stmt = select(Account)
+    stmt = stmt.where(Account.id == int(account)) if account.isdigit() else stmt.where(
+        or_(Account.name == account, Account.phone == account)
+    )
+    found = (await session.execute(stmt.limit(1))).scalars().first()
+    if found is None:
+        raise SystemExit(f"找不到账号: {account}（先用 python -c 或面板确认 id / 名称）")
+    print(f"导入的任务将归属账号 #{found.id} {found.name}")
+    return found.id
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="导入旧版 checkin_tasks.json")
     parser.add_argument("file", type=Path, help="旧版 checkin_tasks.json 路径")
     parser.add_argument("--dry-run", action="store_true", help="只打印将要导入的任务，不写入数据库")
+    parser.add_argument("--account", help="把导入的任务归属到该账号（id 或名称），默认使用默认账号")
     args = parser.parse_args()
 
     if not args.file.exists():
         raise SystemExit(f"文件不存在: {args.file}")
 
     print(f"数据库目录: {os.getenv('DATA_DIR', './data')}")
-    count = asyncio.run(run(args.file, dry_run=args.dry_run))
+    count = asyncio.run(run(args.file, dry_run=args.dry_run, account=args.account))
     suffix = "（dry-run，未写入）" if args.dry_run else ""
     print(f"完成：导入 {count} 个任务{suffix}")
 

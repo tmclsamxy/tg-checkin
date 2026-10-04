@@ -63,27 +63,44 @@ export const api = {
   changePassword: (oldPassword, newPassword) =>
     request('/api/auth/password', { method: 'POST', body: { old_password: oldPassword, new_password: newPassword } }),
 
-  // ---- telegram ----
-  telegramStatus: () => request('/api/telegram/status'),
-  requestCode: (apiId, apiHash, phone) =>
-    request('/api/telegram/request-code', { method: 'POST', body: { api_id: apiId, api_hash: apiHash, phone } }),
-  resendCode: () => request('/api/telegram/resend-code', { method: 'POST', body: {} }),
-  verifyCode: (code) => request('/api/telegram/verify-code', { method: 'POST', body: { code } }),
-  verifyPassword: (password) => request('/api/telegram/verify-password', { method: 'POST', body: { password } }),
-  cancelLogin: () => request('/api/telegram/cancel-login', { method: 'POST', body: {} }),
-  connectTelegram: () => request('/api/telegram/connect', { method: 'POST', body: {} }),
-  disconnectTelegram: () => request('/api/telegram/disconnect', { method: 'POST', body: {} }),
-  logoutTelegram: () => request('/api/telegram/logout', { method: 'POST', body: {} }),
-  testNotification: () => request('/api/telegram/test-notification', { method: 'POST', body: {} }),
+  // ---- accounts ----
+  listAccounts: () => request('/api/accounts'),
+  createAccount: (payload) => request('/api/accounts', { method: 'POST', body: payload }),
+  updateAccount: (id, payload) => request(`/api/accounts/${id}`, { method: 'PUT', body: payload }),
+  deleteAccount: (id) => request(`/api/accounts/${id}`, { method: 'DELETE' }),
+  reorderAccounts: (ids) => request('/api/accounts/reorder', { method: 'POST', body: { ids } }),
+  requestCode: (id, apiId, apiHash, phone) =>
+    request(`/api/accounts/${id}/request-code`, {
+      method: 'POST',
+      // blank values mean "reuse what the account already has stored"
+      body: { api_id: apiId || '', api_hash: apiHash || '', phone: phone || '' }
+    }),
+  resendCode: (id) => request(`/api/accounts/${id}/resend-code`, { method: 'POST', body: {} }),
+  verifyCode: (id, code) => request(`/api/accounts/${id}/verify-code`, { method: 'POST', body: { code } }),
+  verifyPassword: (id, password) =>
+    request(`/api/accounts/${id}/verify-password`, { method: 'POST', body: { password } }),
+  cancelLogin: (id) => request(`/api/accounts/${id}/cancel-login`, { method: 'POST', body: {} }),
+  connectAccount: (id) => request(`/api/accounts/${id}/connect`, { method: 'POST', body: {} }),
+  disconnectAccount: (id) => request(`/api/accounts/${id}/disconnect`, { method: 'POST', body: {} }),
+  logoutAccount: (id) => request(`/api/accounts/${id}/logout`, { method: 'POST', body: {} }),
+  connectAllAccounts: () => request('/api/accounts/connect-all', { method: 'POST', body: {} }),
 
   // ---- tasks ----
-  listTasks: () => request('/api/tasks'),
+  listTasks: (params = {}) => {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== null && v !== undefined && v !== '') qs.set(k, v)
+    })
+    const suffix = qs.toString()
+    return request(`/api/tasks${suffix ? `?${suffix}` : ''}`)
+  },
   createTask: (payload) => request('/api/tasks', { method: 'POST', body: payload }),
   updateTask: (id, payload) => request(`/api/tasks/${id}`, { method: 'PUT', body: payload }),
   deleteTask: (id) => request(`/api/tasks/${id}`, { method: 'DELETE' }),
   toggleTask: (id) => request(`/api/tasks/${id}/toggle`, { method: 'POST', body: {} }),
   runTask: (id) => request(`/api/tasks/${id}/run`, { method: 'POST', body: {} }),
-  runAll: () => request('/api/tasks/run-all', { method: 'POST', body: {} }),
+  runAll: (accountId) =>
+    request(`/api/tasks/run-all${accountId ? `?account_id=${accountId}` : ''}`, { method: 'POST', body: {} }),
   reorderTasks: (ids) => request('/api/tasks/reorder', { method: 'POST', body: { ids } }),
 
   // ---- runs ----
@@ -100,6 +117,7 @@ export const api = {
   // ---- settings / system ----
   getSettings: () => request('/api/settings'),
   updateSettings: (payload) => request('/api/settings', { method: 'PUT', body: payload }),
+  testNotification: () => request('/api/settings/test-notification', { method: 'POST', body: {} }),
   systemInfo: () => request('/api/system/info'),
   health: () => request('/api/health', { auth: false })
 }

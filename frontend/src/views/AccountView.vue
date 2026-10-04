@@ -1,26 +1,23 @@
 <script setup>
-import { onMounted, ref, reactive } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AppIcon from '../components/AppIcon.vue'
+import AccountFormModal from '../components/AccountFormModal.vue'
 import { api } from '../api'
-import { toast, errorText } from '../store'
+import { toast, errorText, formatRelative } from '../store'
 
 const loading = ref(true)
-const busy = ref(false)
-const status = ref(null)
-const settings = ref(null)
+const busyId = ref(null)
+const accounts = ref([])
+const modal = ref(null) // { mode, account }
 
-const creds = reactive({ api_id: '', api_hash: '', phone: '' })
-const code = ref('')
-const password = ref('')
+const connectedCount = computed(() => accounts.value.filter((a) => a.connected).length)
+const totalTasks = computed(() => accounts.value.reduce((sum, a) => sum + (a.task_count || 0), 0))
+const canConnectAll = computed(() => accounts.value.some((a) => !a.connected && a.has_session))
 
 async function refresh() {
   loading.value = true
   try {
-    const [s, st] = await Promise.all([api.telegramStatus(), api.getSettings()])
-    status.value = s
-    settings.value = st
-    if (st.api_id) creds.api_id = st.api_id
-    if (st.phone) creds.phone = st.phone
+    accounts.value = await api.listAccounts()
   } catch (err) {
     toast(errorText(err), 'error')
   } finally {
@@ -28,89 +25,81 @@ async function refresh() {
   }
 }
 
-async function requestCode() {
-  busy.value = true
+async function withBusy(account, action) {
+  busyId.value = account.id
   try {
-    status.value = await api.requestCode(creds.api_id, creds.api_hash, creds.phone)
-    toast('验证码已发送到 Telegram，请查收', 'success')
+    await action()
   } catch (err) {
     toast(errorText(err), 'error')
   } finally {
-    busy.value = false
+    busyId.value = null
   }
 }
 
-async function resend() {
-  busy.value = true
-  try {
-    status.value = await api.resendCode()
-    toast('验证码已重新发送', 'success')
-  } catch (err) {
-    toast(errorText(err), 'error')
-  } finally {
-    busy.value = false
-  }
+function connect(account) {
+  return withBusy(account, async () => {
+    await api.connectAccount(account.id)
+    toast(`「${account.name}」已连接`, 'success')
+    await refresh()
+  })
 }
 
-async function verifyCode() {
-  busy.value = true
-  try {
-    status.value = await api.verifyCode(code.value)
-    if (status.value.needs_password) toast('该账号开启了两步验证，请输入密码', 'info')
-    else if (status.value.connected) {
-      toast('登录成功', 'success')
-      code.value = ''
-    }
-  } catch (err) {
-    toast(errorText(err), 'error')
-  } finally {
-    busy.value = false
-  }
+function disconnect(account) {
+  return withBusy(account, async () => {
+    await api.disconnectAccount(account.id)
+    toast(`「${account.name}」已断开`, 'success')
+    await refresh()
+  })
 }
 
-async function verifyPassword() {
-  busy.value = true
-  try {
-    status.value = await api.verifyPassword(password.value)
-    password.value = ''
-    toast('登录成功', 'success')
-  } catch (err) {
-    toast(errorText(err), 'error')
-  } finally {
-    busy.value = false
-  }
+async function logout(account) {
+  if (!confirm(`确定退出「${account.name}」并清除已保存的会话？\n该账号下的任务需要重新登录后才能运行。`)) return
+  return withBusy(account, async () => {
+    await api.logoutAccount(account.id)
+    toast('已退出登录并清除会话', 'success')
+    await refresh()
+  })
 }
 
-async function cancel() {
-  await api.cancelLogin()
-  code.value = ''
-  password.value = ''
-  await refresh()
+async function remove(account) {
+  const extra = account.task_count ? `\n它的 ${account.task_count} 个任务会改为使用默认账号。` : ''
+  if (!confirm(`确定删除账号「${account.name}」？${extra}`)) return
+  return withBusy(account, async () => {
+    const res = await api.deleteAccount(account.id)
+    toast(res.message, 'success')
+    await refresh()
+  })
 }
 
-async function reconnect() {
-  busy.value = true
-  try {
-    status.value = await api.connectTelegram()
-    toast('已连接', 'success')
-  } catch (err) {
-    toast(errorText(err), 'error')
-  } finally {
-    busy.value = false
-  }
+function toggle(account) {
+  return withBusy(account, async () => {
+    const updated = await api.updateAccount(account.id, { enabled: !account.enabled })
+    Object.assign(account, updated)
+    toast(updated.enabled ? '账号已启用' : '账号已停用', 'success')
+  })
 }
 
-async function logout() {
-  busy.value = true
+async function connectAll() {
   try {
-    await api.logoutTelegram()
-    toast('已退出 Telegram 登录', 'success')
+    const res = await api.connectAllAccounts()
+    toast(res.message, 'success')
     await refresh()
   } catch (err) {
     toast(errorText(err), 'error')
-  } finally {
-    busy.value = false
   }
+}
+
+function onSaved() {
+  modal.value = null
+  refresh()
+}
+
+function statusOf(account) {
+  if (!account.enabled) return { cls: 'badge-muted', text: '已停用' }
+  if (account.needs_code || account.needs_password) return { cls: 'badge-warn', text: '等待验证' }
+  if (account.connected) return { cls: 'badge-success', text: '已连接' }
+  if (account.has_session) return { cls: 'badge-muted', text: '未连接' }
+  return { cls: 'badge-failed', text: '未登录' }
 }
 
 onMounted(refresh)
@@ -118,98 +107,138 @@ onMounted(refresh)
 
 <template>
   <div class="stack">
+    <div class="grid grid-3">
+      <div class="card stat">
+        <div class="stat-label">账号总数</div>
+        <div class="stat-value">{{ accounts.length }}</div>
+      </div>
+      <div class="card stat">
+        <div class="stat-label">已连接</div>
+        <div class="stat-value" style="color: var(--success)">{{ connectedCount }}</div>
+      </div>
+      <div class="card stat">
+        <div class="stat-label">名下任务</div>
+        <div class="stat-value">{{ totalTasks }}</div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-header">
-        <h2>连接状态</h2>
-        <button class="btn btn-sm" :disabled="loading" @click="refresh">刷新</button>
-      </div>
-      <div class="card-body">
-        <div v-if="loading" class="muted">加载中…</div>
-        <template v-else>
-          <div class="row" style="gap: 14px; flex-wrap: wrap">
-            <span class="badge" :class="status.connected ? 'badge-success' : 'badge-muted'">
-              <span class="dot"></span>{{ status.connected ? '已连接' : '未连接' }}
-            </span>
-            <span v-if="status.user" class="text-sm">账号：{{ status.user }}</span>
-            <span v-if="status.phone" class="text-sm muted mono">{{ status.phone }}</span>
-          </div>
-          <div class="row" style="margin-top: 14px; flex-wrap: wrap">
-            <button v-if="!status.connected && settings && settings.has_session" class="btn btn-sm" :disabled="busy" @click="reconnect">
-              <AppIcon name="refresh" size="14" /> 恢复会话
-            </button>
-            <button v-if="status.connected || (settings && settings.has_session)" class="btn btn-sm btn-danger" :disabled="busy" @click="logout">
-              <AppIcon name="logout" size="14" /> 退出并清除会话
-            </button>
-          </div>
-        </template>
-      </div>
-    </div>
-
-    <!-- Step 1: credentials -->
-    <div v-if="status && !status.connected && !status.needs_code && !status.needs_password" class="card">
-      <div class="card-header"><h2>第一步 · 填写 API 凭据</h2></div>
-      <div class="card-body">
-        <div class="banner banner-info">
-          <AppIcon name="key" />
-          <div>
-            前往 <a href="https://my.telegram.org/apps" target="_blank" rel="noopener">my.telegram.org</a>
-            创建应用即可获得 API ID 与 API Hash。凭据会加密保存在服务端。
-          </div>
-        </div>
-        <div class="field">
-          <label class="label">API ID</label>
-          <input v-model="creds.api_id" class="input mono" placeholder="12345678" />
-        </div>
-        <div class="field">
-          <label class="label">API Hash</label>
-          <input v-model="creds.api_hash" class="input mono" placeholder="32 位字符串" />
-          <div class="hint">{{ settings && settings.has_api_hash ? `已保存：${settings.api_hash_masked}（留空则不修改）` : '仅保存在你的服务器上，不会外传' }}</div>
-        </div>
-        <div class="field">
-          <label class="label">手机号</label>
-          <input v-model="creds.phone" class="input" placeholder="+8613800138000" />
-          <div class="hint">需包含国际区号。</div>
-        </div>
-        <button class="btn btn-primary" :disabled="busy || !creds.api_id || !creds.api_hash || !creds.phone" @click="requestCode">
-          <span v-if="busy" class="spinner"></span>
-          <AppIcon v-else name="send" size="15" /> 发送验证码
-        </button>
-      </div>
-    </div>
-
-    <!-- Step 2: code -->
-    <div v-if="status && status.needs_code" class="card">
-      <div class="card-header"><h2>第二步 · 输入验证码</h2></div>
-      <div class="card-body">
-        <p class="text-sm muted">验证码已发送至 Telegram（在「已保存的消息」或官方通知里）。</p>
-        <div class="field" style="margin-top: 14px">
-          <input v-model="code" class="input code-input" placeholder="12345" maxlength="8" @keyup.enter="verifyCode" />
-        </div>
+        <h2>Telegram 账号</h2>
         <div class="row">
-          <button class="btn btn-primary" :disabled="busy || !code" @click="verifyCode">
-            <span v-if="busy" class="spinner"></span> 验证并登录
+          <button v-if="canConnectAll" class="btn btn-sm" @click="connectAll">
+            <AppIcon name="refresh" size="14" /> 全部恢复会话
           </button>
-          <button class="btn btn-sm" :disabled="busy" @click="resend">重新发送</button>
-          <button class="btn btn-sm btn-ghost" @click="cancel">取消</button>
+          <button class="btn btn-sm btn-primary" @click="modal = { mode: 'create', account: null }">
+            <AppIcon name="plus" size="14" /> 添加账号
+          </button>
         </div>
+      </div>
+
+      <div v-if="loading" class="empty">加载中…</div>
+
+      <div v-else-if="!accounts.length" class="empty">
+        <div class="empty-title">还没有添加任何 Telegram 账号</div>
+        <div class="empty-hint">
+          每个账号独立登录、独立保存会话，任务可以指定用哪个账号执行。<br />
+          多个账号可以共用同一套 API ID / API Hash。
+        </div>
+        <button class="btn btn-primary" @click="modal = { mode: 'create', account: null }">添加第一个账号</button>
+      </div>
+
+      <div v-else class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>账号</th>
+              <th>手机号</th>
+              <th>状态</th>
+              <th>任务</th>
+              <th>最近连接</th>
+              <th style="text-align: right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="account in accounts" :key="account.id">
+              <td>
+                <div class="cell-strong">{{ account.name }}</div>
+                <div class="cell-sub">{{ account.tg_user || '尚未登录' }}</div>
+              </td>
+              <td class="mono text-sm">{{ account.phone || '—' }}</td>
+              <td>
+                <span class="badge" :class="statusOf(account).cls">
+                  <span class="dot"></span>{{ statusOf(account).text }}
+                </span>
+                <div v-if="account.last_error" class="cell-sub" style="max-width: 240px">
+                  {{ account.last_error }}
+                </div>
+              </td>
+              <td class="text-sm">{{ account.task_count }}</td>
+              <td class="text-sm muted" style="white-space: nowrap">
+                {{ account.last_connected_at ? formatRelative(account.last_connected_at) : '—' }}
+              </td>
+              <td style="text-align: right; white-space: nowrap">
+                <button
+                  v-if="!account.connected && account.has_session"
+                  class="btn btn-sm"
+                  :disabled="busyId === account.id"
+                  @click="connect(account)"
+                >
+                  恢复会话
+                </button>
+                <button
+                  v-else-if="account.connected"
+                  class="btn btn-sm"
+                  :disabled="busyId === account.id"
+                  @click="disconnect(account)"
+                >
+                  断开
+                </button>
+                <button
+                  v-else
+                  class="btn btn-sm btn-primary"
+                  :disabled="busyId === account.id"
+                  @click="modal = { mode: 'relogin', account }"
+                >
+                  登录
+                </button>
+
+                <label class="switch" style="margin: 0 8px; vertical-align: middle" :title="account.enabled ? '已启用' : '已停用'">
+                  <input type="checkbox" :checked="account.enabled" @change="toggle(account)" />
+                  <span class="slider"></span>
+                </label>
+
+                <button class="btn btn-sm" @click="modal = { mode: 'edit', account }">
+                  <AppIcon name="cog" size="14" />
+                </button>
+                <button class="btn btn-sm" @click="modal = { mode: 'relogin', account }">重新登录</button>
+                <button class="btn btn-sm btn-danger" :disabled="busyId === account.id" @click="logout(account)">
+                  退出登录
+                </button>
+                <button class="btn btn-sm btn-danger" :disabled="busyId === account.id" @click="remove(account)">
+                  删除
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
-    <!-- Step 3: 2FA -->
-    <div v-if="status && status.needs_password" class="card">
-      <div class="card-header"><h2>第三步 · 两步验证</h2></div>
-      <div class="card-body">
-        <p class="text-sm muted">该账号开启了云端密码，请输入以完成登录。</p>
-        <div class="field" style="margin-top: 14px">
-          <input v-model="password" class="input" type="password" placeholder="云端密码" @keyup.enter="verifyPassword" />
-        </div>
-        <div class="row">
-          <button class="btn btn-primary" :disabled="busy || !password" @click="verifyPassword">
-            <span v-if="busy" class="spinner"></span> 完成登录
-          </button>
-          <button class="btn btn-sm btn-ghost" @click="cancel">取消</button>
-        </div>
+    <div class="banner banner-info">
+      <AppIcon name="key" />
+      <div>
+        凭据与会话都以 Fernet 加密保存在你的服务器上。同一个账号在多处登录可能触发 Telegram 的风控，
+        建议只在这个服务里保持一个长期会话。
       </div>
     </div>
+
+    <AccountFormModal
+      v-if="modal"
+      :mode="modal.mode"
+      :account="modal.account"
+      @close="modal = null"
+      @saved="onSaved"
+    />
   </div>
 </template>

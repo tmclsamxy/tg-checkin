@@ -25,10 +25,11 @@ TG Checkin 是一个自托管的 Telegram 自动签到服务。它以**你的用
 | | |
 |---|---|
 | **多种签到方式** | 向机器人发消息（`/sign`、`签到`）、点击**文字按钮**或**内联回调按钮**、向群聊发消息 |
+| **多账号** | 同时登录多个 Telegram 账号，每个账号独立会话与登录状态；任务可指定用哪个账号执行 |
 | **自动过人机验证** | 识别「请计算 11 + 15 = ？」这类算术验证码，自动算出答案并点击正确选项；识别不出来时保持原样不乱点 |
-| **Web 管理面板** | 任务增删改查、启停开关、单条/全部立即执行、运行日志与统计 |
-| **登录流程可视化** | 在网页里填 API 凭据 → 收验证码 → 填验证码 / 两步验证密码，无需命令行 |
-| **结果通知** | 签到结束后把汇总报告推送到 Telegram（可用专属 bot，也可直接用本人账号） |
+| **Web 管理面板** | 账号管理、任务增删改查、启停开关、单条/全部立即执行、运行日志与统计 |
+| **登录流程可视化** | 在网页里填 API 凭据 → 收验证码 → 填验证码 / 两步验证密码，无需命令行，每个账号各走一遍 |
+| **结果通知** | 签到结束后把汇总报告推送到 Telegram（可用专属 bot，也可直接用本人账号，多账号时可指定发送者） |
 | **运行可追溯** | 每次执行都记录状态、机器人回复、耗时、触发方式（定时/手动） |
 | **凭据加密** | API Hash、Bot Token、登录会话在数据库中均以 Fernet 加密存储 |
 | **抗风控** | 任务之间可配置间隔、失败自动重试、自动处理 Telegram FloodWait |
@@ -151,21 +152,35 @@ uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
 
 访问 <https://my.telegram.org/apps>，用手机号登录后创建一个应用，得到 **App api_id** 与 **App api_hash**。
 
-### 2. 登录 Telegram 账号
+> 多个账号可以共用同一套 api_id / api_hash，只要**手机号不同**即可。
 
-面板 → **Telegram 账号** → 填入 api_id / api_hash / 手机号 → 点「发送验证码」→
-把 Telegram 收到的验证码填进去（开了两步验证的话再填一次云端密码）。
+### 2. 添加并登录 Telegram 账号（可多个）
 
-登录成功后会话会加密存进数据库，重启服务也不掉线。
+面板 → **Telegram 账号** → 「添加账号」→ 填备注名 / api_id / api_hash / 手机号 →
+「保存并发送验证码」→ 填 Telegram 收到的验证码（开了两步验证的话再填一次云端密码）。
+
+登录成功后会话会加密存进数据库，重启服务自动恢复，一个账号一份，互不影响。
+
+| 操作 | 说明 |
+|---|---|
+| **恢复会话** | 重启后或手动断开后重新连接，不需要重新登录 |
+| **断开** | 只断开连接，会话仍保留 |
+| **重新登录** | 会话失效时重新走一遍验证码流程 |
+| **退出登录** | 调用 Telegram 的 `logOut` 并使会话作废，需要重新登录 |
+| **启用开关** | 停用后该账号名下的任务会在定时签到里被跳过 |
+| **删除** | 一并退出登录，名下任务改为使用默认账号（不会跟着删） |
 
 ### 3. 添加签到任务
 
 面板 → **签到任务** → 「新建任务」：
 
+- **执行账号**：选择这个任务用哪个账号的身份执行；选「默认账号」时使用列表中第一个已启用的账号
 - **机器人**：填用户名（如 `@sgkboxbot`）
   - 动作选「发送消息」→ 填 `/qd` 之类的命令，或「点击按钮」→ 按按钮文字 / 回调数据匹配
   - 可选「启动命令」，会先发 `/start` 唤醒机器人菜单再执行
 - **群组 / 频道**：填群 ID（`-1001234567890`）或 `@群用户名`，动作固定为发送消息
+
+任务列表顶部可以**按账号筛选**，也能只执行某个账号下的全部任务。
 
 > **如何拿到回调数据？** 用 Telegram 桌面版或 `@JsonDumpBot` 之类工具查看按钮的 `callback_data`。
 
@@ -184,6 +199,7 @@ uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
 - 发送签到后会在新消息里寻找这类题目，**算出答案并点击数值匹配的按钮**
 - 支持 `+ - × ÷`、`* / x`、中文运算符（`加` `减去` `乘以` `除以`）和中文数字（`六 + 三`）
 - 另外覆盖「请选择最大的数字」和「请点击『确认』」两种常见变体
+
 - 有些机器人会连续出题，可作答轮数在「系统设置 → 人机验证」里调整（默认 2 轮，设 0 关闭）
 
 **安全性**：只在能确定答案时才点击。题目里找不到算式、或算出的答案不在选项里，就什么都不做，
@@ -193,6 +209,9 @@ uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
 
 面板 → **系统设置**：设置每日执行时间（如 `08:00`）、时区、任务间隔、失败重试次数，
 以及是否开启结果通知和接收者 ID（填 `me` 就是发到「已保存的消息」）。
+
+多账号时可以在「发送账号」里指定由哪个账号推送通知（默认自动选一个已连接的账号）。
+汇总报告在涉及多个账号时会标出每条记录属于哪个账号。
 
 ---
 
@@ -207,8 +226,12 @@ python tools/import_legacy.py /path/to/checkin_tasks.json --dry-run   # 先预�
 python tools/import_legacy.py /path/to/checkin_tasks.json             # 正式导入
 ```
 
-旧的 `telegram_api.json` / `notification_config.json` 内容请在「系统设置」页面重新填写一次
+旧的 `telegram_api.json` / `notification_config.json` 内容请在「Telegram 账号」与「系统设置」页面重新填写一次
 （旧版是明文存储在 JSON 里，新版会加密入库）。
+
+> **从 v2.0.0 升级**：启动时会自动把数据库里原来的 api_id / api_hash / 手机号 / 会话
+> 迁移成一个名为「默认账号」的账号，并把已有任务都归属到它——**不需要重新登录**。
+> 之后照常在面板里添加更多账号即可。
 
 ---
 
@@ -239,6 +262,7 @@ python tools/import_legacy.py /path/to/checkin_tasks.json             # 正式�
 | 自动解答人机验证 | 开启 | 遇到算术验证码时自动作答；可在单个任务里单独关闭 |
 | 最多连续作答轮数 | `2` | 机器人连续出题时的上限，`0` 表示关闭 |
 | 作答后等待秒数 | `5` | 点完选项后等待机器人继续回复的时间 |
+| 发送账号 | 自动 | 多账号时指定由哪个账号推送通知 |
 | 通知 | 关闭 | 可选择只在失败时通知 |
 
 ---
@@ -251,17 +275,17 @@ tg-checkin/
 │   ├── app/
 │   │   ├── main.py              # FastAPI 入口、静态文件托管
 │   │   ├── config.py            # pydantic-settings 配置
-│   │   ├── database.py          # SQLAlchemy 异步引擎
-│   │   ├── models.py            # ORM：User / AppSetting / Task / RunLog
+│   │   ├── database.py          # SQLAlchemy 异步引擎 + 轻量列迁移 + 老数据升级
+│   │   ├── models.py            # ORM：User / AppSetting / Account / Task / RunLog
 │   │   ├── schemas.py           # 请求与响应模型
 │   │   ├── security.py          # PBKDF2 密码哈希 / JWT / Fernet 加密
 │   │   ├── runner.py            # 执行编排 + 日志落库 + 汇总通知
 │   │   ├── scheduler.py         # APScheduler 每日定时
 │   │   ├── telegram/
-│   │   │   ├── manager.py       # Telethon 登录流程与会话持久化
+│   │   │   ├── manager.py       # 多账号会话池：登录流程、连接缓存、会话持久化
 │   │   │   ├── executor.py      # 单个任务的签到执行引擎
 │   │   │   └── captcha.py       # 人机验证识别与作答（纯逻辑，无副作用）
-│   │   └── routers/             # auth / telegram / tasks / runs / settings / system
+│   │   └── routers/             # auth / accounts / tasks / runs / settings / system
 │   ├── static/                  # 前端构建产物（gitignore）
 │   └── tests/
 ├── frontend/                    # Vue 3 + Vite 面板
@@ -284,18 +308,20 @@ tg-checkin/
 | POST | `/api/auth/login` | 登录获取 JWT |
 | GET | `/api/auth/me` | 当前用户 |
 | POST | `/api/auth/password` | 修改密码 |
-| GET | `/api/telegram/status` | 连接状态 |
-| POST | `/api/telegram/request-code` | 保存凭据并请求验证码 |
-| POST | `/api/telegram/verify-code` | 提交验证码 |
-| POST | `/api/telegram/verify-password` | 两步验证密码 |
-| POST | `/api/telegram/logout` | 退出并清除会话 |
-| GET/POST/PUT/DELETE | `/api/tasks` `/api/tasks/{id}` | 任务增删改查 |
+| GET/POST | `/api/accounts` | 账号列表 / 新增账号 |
+| PUT/DELETE | `/api/accounts/{id}` | 修改 / 删除账号 |
+| POST | `/api/accounts/{id}/request-code` | 请求登录验证码（留空的字段沿用已存值） |
+| POST | `/api/accounts/{id}/verify-code` | 提交验证码 |
+| POST | `/api/accounts/{id}/verify-password` | 两步验证密码 |
+| POST | `/api/accounts/{id}/connect` `/disconnect` `/logout` | 连接 / 断开 / 退出登录 |
+| POST | `/api/accounts/connect-all` | 恢复所有可用的会话 |
+| GET/POST/PUT/DELETE | `/api/tasks` `/api/tasks/{id}` | 任务增删改查（`?account_id=` 可过滤） |
 | POST | `/api/tasks/{id}/run` | 立即执行单个任务 |
-| POST | `/api/tasks/run-all` | 立即执行全部 |
-| GET | `/api/runs` | 运行日志（支持 `task_id` / `status` 过滤） |
+| POST | `/api/tasks/run-all` | 立即执行全部（`?account_id=` 只跑某账号） |
+| GET | `/api/runs` | 运行日志（支持 `task_id` / `account_id` / `status` 过滤） |
 | GET | `/api/runs/stats` | 统计 |
 | GET/PUT | `/api/settings` | 读写配置（密钥仅返回掩码） |
-| GET | `/api/system/info` | 版本、下次执行时间等 |
+| GET | `/api/system/info` | 版本、账号数、下次执行时间等 |
 
 ---
 

@@ -18,6 +18,7 @@ router = APIRouter(prefix="/api/runs", tags=["runs"])
 @router.get("", response_model=list[RunOut])
 async def list_runs(
     task_id: int | None = None,
+    account_id: int | None = None,
     status: str | None = None,
     limit: int = 50,
     offset: int = 0,
@@ -28,6 +29,8 @@ async def list_runs(
     stmt = select(RunLog).order_by(RunLog.created_at.desc(), RunLog.id.desc())
     if task_id is not None:
         stmt = stmt.where(RunLog.task_id == task_id)
+    if account_id is not None:
+        stmt = stmt.where(RunLog.account_id == account_id)
     if status:
         stmt = stmt.where(RunLog.status == status)
     result = await session.execute(stmt.limit(limit).offset(offset))

@@ -7,12 +7,7 @@ click payload, multi-round cursor) is covered without a network connection.
 from __future__ import annotations
 
 import asyncio
-import sys
-from pathlib import Path
 from types import SimpleNamespace
-
-BACKEND_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(BACKEND_DIR))
 
 from app.telegram.executor import _solve_captchas  # noqa: E402
 

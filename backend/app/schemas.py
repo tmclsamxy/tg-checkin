@@ -42,11 +42,6 @@ class UserOut(BaseModel):
 # Settings
 # --------------------------------------------------------------------------- #
 class SettingsOut(BaseModel):
-    api_id: str | None = None
-    api_hash_masked: str | None = None
-    has_api_hash: bool = False
-    phone: str | None = None
-
     schedule_enabled: bool = True
     schedule_time: str = "08:00"
     timezone: str = "Asia/Shanghai"
@@ -56,6 +51,7 @@ class SettingsOut(BaseModel):
     has_notify_bot_token: bool = False
     notify_receiver_id: str | None = None
     notify_only_on_failure: bool = False
+    notify_account_id: int | None = None
 
     reply_wait_seconds: int = 8
     start_command_delay: int = 5
@@ -66,16 +62,12 @@ class SettingsOut(BaseModel):
     captcha_max_rounds: int = 2
     captcha_wait_seconds: int = 5
 
-    telegram_connected: bool = False
-    telegram_user: str | None = None
-    has_session: bool = False
+    account_count: int = 0
+    connected_account_count: int = 0
+    task_count: int = 0
 
 
 class SettingsUpdate(BaseModel):
-    api_id: str | None = None
-    api_hash: str | None = None
-    phone: str | None = None
-
     schedule_enabled: bool | None = None
     schedule_time: str | None = None
     timezone: str | None = None
@@ -84,6 +76,7 @@ class SettingsUpdate(BaseModel):
     notify_bot_token: str | None = None
     notify_receiver_id: str | None = None
     notify_only_on_failure: bool | None = None
+    notify_account_id: int | None = None
 
     reply_wait_seconds: int | None = Field(default=None, ge=1, le=120)
     start_command_delay: int | None = Field(default=None, ge=0, le=60)
@@ -114,6 +107,7 @@ class SettingsUpdate(BaseModel):
 class TaskBase(BaseModel):
     name: str = Field(default="", max_length=128)
     enabled: bool = True
+    account_id: int | None = None
     target_type: TargetType = "bot"
     bot_username: str | None = None
     group_id: str | None = None
@@ -167,6 +161,7 @@ class TaskOut(BaseModel):
     name: str
     enabled: bool
     sort_order: int
+    account_id: int | None
     target_type: str
     bot_username: str | None
     group_id: str | None
@@ -205,6 +200,8 @@ class RunOut(BaseModel):
 
     id: int
     task_id: int | None
+    account_id: int | None
+    account_name: str
     task_name: str
     target: str
     status: str
@@ -229,9 +226,11 @@ class RunStats(BaseModel):
 # Telegram
 # --------------------------------------------------------------------------- #
 class RequestCodeIn(BaseModel):
-    api_id: str = Field(min_length=1)
-    api_hash: str = Field(min_length=1)
-    phone: str = Field(min_length=5)
+    """Blank fields reuse whatever is already stored on the account."""
+
+    api_id: str | None = None
+    api_hash: str | None = None
+    phone: str | None = None
 
 
 class VerifyCodeIn(BaseModel):
@@ -242,14 +241,53 @@ class VerifyPasswordIn(BaseModel):
     password: str = Field(min_length=1)
 
 
-class TelegramStatus(BaseModel):
-    configured: bool
-    connected: bool
-    needs_code: bool
-    needs_password: bool
-    user: str | None = None
+# --------------------------------------------------------------------------- #
+# Accounts
+# --------------------------------------------------------------------------- #
+class AccountCreate(BaseModel):
+    name: str = Field(default="", max_length=128)
+    api_id: str = Field(min_length=1)
+    api_hash: str = Field(min_length=1)
+    phone: str = Field(min_length=5)
+    enabled: bool = True
+
+
+class AccountUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=128)
+    enabled: bool | None = None
+    api_id: str | None = None
+    #: blank means "keep the stored hash"
+    api_hash: str | None = None
     phone: str | None = None
-    detail: str | None = None
+
+
+class AccountOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    enabled: bool
+    sort_order: int
+    api_id: str | None
+    api_hash_masked: str | None = None
+    has_api_hash: bool = False
+    phone: str | None
+    has_session: bool = False
+    tg_user: str | None
+    last_error: str | None
+    last_connected_at: datetime | None
+
+    # runtime, filled in by the router
+    connected: bool = False
+    needs_code: bool = False
+    needs_password: bool = False
+    task_count: int = 0
+
+    created_at: datetime
+
+
+class AccountReorder(BaseModel):
+    ids: list[int]
 
 
 class SystemInfo(BaseModel):
@@ -261,6 +299,8 @@ class SystemInfo(BaseModel):
     timezone: str
     task_count: int
     enabled_task_count: int
+    account_count: int = 0
+    connected_account_count: int = 0
 
 
 class MessageResponse(BaseModel):

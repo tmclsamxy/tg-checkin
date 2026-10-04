@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..deps import get_current_user, get_db
-from ..models import Task, User
+from ..models import Account, Task, User
 from ..runner import run_all_tasks, run_task_by_id
 from ..schemas import MessageResponse, RunOut, TaskCreate, TaskOut, TaskUpdate
 
@@ -19,6 +19,14 @@ router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 class ReorderRequest(BaseModel):
     ids: list[int]
+
+
+async def _validate_account(session: AsyncSession, payload: TaskCreate | TaskUpdate) -> None:
+    """An explicit account must exist; omitting it means "use the default one"."""
+    if payload.account_id is None:
+        return
+    if await session.get(Account, payload.account_id) is None:
+        raise HTTPException(400, "所选 Telegram 账号不存在")
 
 
 def _validate_task(payload: TaskCreate | TaskUpdate) -> None:
@@ -49,6 +57,7 @@ def _apply_payload(task: Task, payload: TaskCreate | TaskUpdate) -> None:
     for field in (
         "name",
         "enabled",
+        "account_id",
         "target_type",
         "bot_username",
         "group_id",
@@ -87,10 +96,14 @@ def _apply_payload(task: Task, payload: TaskCreate | TaskUpdate) -> None:
 
 @router.get("", response_model=list[TaskOut])
 async def list_tasks(
+    account_id: int | None = Query(default=None, description="按账号过滤"),
     session: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    result = await session.execute(select(Task).order_by(Task.sort_order, Task.id))
+    stmt = select(Task).order_by(Task.sort_order, Task.id)
+    if account_id is not None:
+        stmt = stmt.where(Task.account_id == account_id)
+    result = await session.execute(stmt)
     return result.scalars().all()
 
 
@@ -101,6 +114,7 @@ async def create_task(
     _: User = Depends(get_current_user),
 ):
     _validate_task(payload)
+    await _validate_account(session, payload)
     task = Task()
     _apply_payload(task, payload)
 
@@ -136,6 +150,7 @@ async def update_task(
     if task is None:
         raise HTTPException(404, "任务不存在")
     _validate_task(payload)
+    await _validate_account(session, payload)
     _apply_payload(task, payload)
     await session.commit()
     await session.refresh(task)
@@ -186,10 +201,11 @@ async def run_task(
 
 @router.post("/run-all", response_model=list[RunOut])
 async def run_all(
+    account_id: int | None = Query(default=None, description="只运行该账号下的任务"),
     session: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    logs = await run_all_tasks(trigger="manual")
+    logs = await run_all_tasks(trigger="manual", account_id=account_id)
     return logs
 
 

@@ -62,12 +62,19 @@ onMounted(refresh)
 
 <template>
   <div class="stack">
-    <div v-if="settings && !settings.has_session" class="banner banner-warn">
+    <div v-if="settings && !settings.connected_account_count" class="banner banner-warn">
       <AppIcon name="bolt" />
       <div>
-        还没有登录 Telegram 账号。请前往
-        <router-link :to="{ name: 'account' }" style="font-weight: 600">Telegram 账号</router-link>
-        页面完成登录，否则无法执行签到。
+        <template v-if="!settings.account_count">
+          还没有添加 Telegram 账号。请前往
+          <router-link :to="{ name: 'account' }" style="font-weight: 600">Telegram 账号</router-link>
+          页面添加并登录，否则无法执行签到。
+        </template>
+        <template v-else>
+          当前没有已连接的账号（共 {{ settings.account_count }} 个）。请前往
+          <router-link :to="{ name: 'account' }" style="font-weight: 600">Telegram 账号</router-link>
+          页面恢复会话或重新登录。
+        </template>
       </div>
     </div>
 
@@ -85,12 +92,16 @@ onMounted(refresh)
       <div class="card stat">
         <div class="stat-label">今日执行</div>
         <div class="stat-value">{{ stats ? stats.today_total : '—' }}</div>
-        <div class="stat-hint">成功 {{ stats ? stats.today_success : 0 }} · 失败 {{ stats ? stats.today_failed : 0 }}</div>
+        <div class="stat-hint">
+          成功 {{ stats ? stats.today_success : 0 }} · 失败 {{ stats ? stats.today_failed : 0 }} · 累计成功率 {{ successRate }}
+        </div>
       </div>
       <div class="card stat">
-        <div class="stat-label">累计成功率</div>
-        <div class="stat-value">{{ successRate }}</div>
-        <div class="stat-hint">共 {{ stats ? stats.total : 0 }} 条记录</div>
+        <div class="stat-label">账号</div>
+        <div class="stat-value">
+          {{ info ? info.connected_account_count : '—' }}<span class="muted" style="font-size: 15px"> / {{ info ? info.account_count : '—' }}</span>
+        </div>
+        <div class="stat-hint">已连接 / 全部</div>
       </div>
       <div class="card stat">
         <div class="stat-label">下次定时</div>

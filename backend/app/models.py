@@ -34,6 +34,8 @@ class AppSetting(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
+    # Legacy single-account credentials. Kept so upgrades can migrate them into
+    # the first Account row; new code always reads credentials from `accounts`.
     api_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     api_hash_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -47,6 +49,8 @@ class AppSetting(Base):
     notify_bot_token_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     notify_receiver_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     notify_only_on_failure: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: None means "use whichever account is connected"
+    notify_account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Behaviour tuning
     reply_wait_seconds: Mapped[int] = mapped_column(Integer, default=8)
@@ -62,6 +66,33 @@ class AppSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 
+class Account(Base):
+    """One Telegram account: credentials, encrypted session and runtime status."""
+
+    __tablename__ = "accounts"
+    __table_args__ = {"extend_existing": True}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    api_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    api_hash_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    session_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    #: Cached display name of the logged-in Telegram user
+    tg_user: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_connected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    tasks: Mapped[list["Task"]] = relationship(back_populates="account", lazy="noload")
+
+
 class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = {"extend_existing": True}
@@ -70,6 +101,11 @@ class Task(Base):
     name: Mapped[str] = mapped_column(String(128), default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    #: Owning Telegram account. NULL falls back to the first enabled account.
+    account_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     target_type: Mapped[str] = mapped_column(String(16), default="bot")  # bot | group
     bot_username: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -93,6 +129,7 @@ class Task(Base):
     runs: Mapped[list["RunLog"]] = relationship(
         back_populates="task", cascade="all, delete-orphan", lazy="noload"
     )
+    account: Mapped["Account | None"] = relationship(back_populates="tasks", lazy="noload")
 
 
 class RunLog(Base):
@@ -103,6 +140,8 @@ class RunLog(Base):
     task_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    account_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    account_name: Mapped[str] = mapped_column(String(128), default="")
     task_name: Mapped[str] = mapped_column(String(128), default="")
     target: Mapped[str] = mapped_column(String(128), default="")
     status: Mapped[str] = mapped_column(String(16), default="success")  # success | failed | skipped

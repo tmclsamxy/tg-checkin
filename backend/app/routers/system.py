@@ -12,10 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..deps import get_current_user, get_db
-from ..models import Task, User
+from ..models import Account, Task, User
 from ..scheduler import checkin_scheduler
 from ..schemas import SystemInfo
 from ..settings_store import get_app_settings
+from ..telegram.manager import telegram_manager
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 _STARTED_AT = time.time()
@@ -29,6 +30,7 @@ async def info(
     cfg = await get_app_settings(session)
     total = await session.scalar(select(func.count(Task.id))) or 0
     enabled = await session.scalar(select(func.count(Task.id)).where(Task.enabled.is_(True))) or 0
+    account_total = await session.scalar(select(func.count(Account.id))) or 0
     return SystemInfo(
         version=settings.app_version,
         python=platform.python_version(),
@@ -38,6 +40,8 @@ async def info(
         timezone=cfg.timezone,
         task_count=int(total),
         enabled_task_count=int(enabled),
+        account_count=int(account_total),
+        connected_account_count=len(telegram_manager.connected_ids()),
     )
 
 

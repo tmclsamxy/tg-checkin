@@ -8,11 +8,9 @@ const loading = ref(true)
 const saving = ref(false)
 const settings = ref(null)
 const info = ref(null)
+const accounts = ref([])
 
 const form = reactive({
-  api_id: '',
-  api_hash: '',
-  phone: '',
   schedule_enabled: true,
   schedule_time: '08:00',
   timezone: 'Asia/Shanghai',
@@ -20,6 +18,7 @@ const form = reactive({
   notify_bot_token: '',
   notify_receiver_id: '',
   notify_only_on_failure: false,
+  notify_account_id: '',
   reply_wait_seconds: 8,
   start_command_delay: 5,
   task_interval_seconds: 5,
@@ -35,18 +34,18 @@ const pwdSaving = ref(false)
 async function refresh() {
   loading.value = true
   try {
-    const [s, i] = await Promise.all([api.getSettings(), api.systemInfo()])
+    const [s, i, a] = await Promise.all([api.getSettings(), api.systemInfo(), api.listAccounts()])
     settings.value = s
     info.value = i
+    accounts.value = a
     Object.assign(form, {
-      api_id: s.api_id || '',
-      phone: s.phone || '',
       schedule_enabled: s.schedule_enabled,
       schedule_time: s.schedule_time,
       timezone: s.timezone,
       notify_enabled: s.notify_enabled,
       notify_receiver_id: s.notify_receiver_id || '',
       notify_only_on_failure: s.notify_only_on_failure,
+      notify_account_id: s.notify_account_id || '',
       reply_wait_seconds: s.reply_wait_seconds,
       start_command_delay: s.start_command_delay,
       task_interval_seconds: s.task_interval_seconds,
@@ -55,7 +54,6 @@ async function refresh() {
       captcha_max_rounds: s.captcha_max_rounds,
       captcha_wait_seconds: s.captcha_wait_seconds
     })
-    form.api_hash = ''
     form.notify_bot_token = ''
   } catch (err) {
     toast(errorText(err), 'error')
@@ -68,10 +66,10 @@ async function save() {
   saving.value = true
   try {
     const payload = { ...form }
-    if (!payload.api_hash) delete payload.api_hash
     if (!payload.notify_bot_token) delete payload.notify_bot_token
+    // empty string means "let any connected account send notifications"
+    payload.notify_account_id = payload.notify_account_id ? Number(payload.notify_account_id) : null
     settings.value = await api.updateSettings(payload)
-    form.api_hash = ''
     form.notify_bot_token = ''
     toast('设置已保存', 'success')
   } catch (err) {
@@ -211,22 +209,20 @@ onMounted(refresh)
       </div>
 
       <div class="card">
-        <div class="card-header"><h2>API 凭据</h2></div>
+        <div class="card-header">
+          <h2>账号概览</h2>
+          <RouterLink class="btn btn-sm" to="/account">管理账号</RouterLink>
+        </div>
         <div class="card-body">
-          <div class="grid grid-2">
-            <div class="field">
-              <label class="label">API ID</label>
-              <input v-model="form.api_id" class="input mono" />
-            </div>
-            <div class="field">
-              <label class="label">API Hash</label>
-              <input v-model="form.api_hash" class="input mono" :placeholder="settings.api_hash_masked || '未设置'" />
-              <div class="hint">留空表示不修改（当前：{{ settings.api_hash_masked || '未设置' }}）</div>
-            </div>
+          <div class="row" style="gap: 14px; flex-wrap: wrap">
+            <span class="badge badge-muted">账号 {{ settings.account_count }}</span>
+            <span class="badge" :class="settings.connected_account_count ? 'badge-success' : 'badge-muted'">
+              <span class="dot"></span>已连接 {{ settings.connected_account_count }}
+            </span>
+            <span class="badge badge-muted">任务 {{ settings.task_count }}</span>
           </div>
-          <div class="field">
-            <label class="label">手机号</label>
-            <input v-model="form.phone" class="input" placeholder="+8613800138000" />
+          <div class="hint" style="margin-top: 10px">
+            API ID / API Hash 与登录会话现在按账号保存，请在「Telegram 账号」页面新增或修改。
           </div>
         </div>
       </div>
@@ -260,16 +256,24 @@ onMounted(refresh)
             </label>
           </div>
 
-          <div class="grid grid-2" style="margin-top: 16px">
+          <div class="grid grid-3" style="margin-top: 16px">
             <div class="field">
               <label class="label">接收者 ID</label>
               <input v-model="form.notify_receiver_id" class="input mono" placeholder="123456789 或 me" />
               <div class="hint">填 <code class="mono">me</code> 发到「已保存的消息」。</div>
             </div>
             <div class="field">
+              <label class="label">发送账号</label>
+              <select v-model="form.notify_account_id" class="select">
+                <option value="">自动（任一已连接账号）</option>
+                <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+              </select>
+              <div class="hint">多账号时指定由谁发送通知。</div>
+            </div>
+            <div class="field">
               <label class="label">通知机器人 Token（可选）</label>
-              <input v-model="form.notify_bot_token" class="input mono" :placeholder="settings.notify_bot_token_masked || '留空则用当前账号发送'" />
-              <div class="hint">留空表示用已登录的账号直接发送。</div>
+              <input v-model="form.notify_bot_token" class="input mono" :placeholder="settings.notify_bot_token_masked || '留空则用账号本人发送'" />
+              <div class="hint">留空表示用上面的账号直接发送。</div>
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { api } from '../api'
 import { toast, errorText } from '../store'
 
@@ -9,12 +9,14 @@ const props = defineProps({
 const emit = defineEmits(['close', 'saved'])
 
 const saving = ref(false)
+const accounts = ref([])
 const form = ref(blank())
 
 function blank() {
   return {
     name: '',
     enabled: true,
+    account_id: '',
     target_type: 'bot',
     bot_username: '',
     group_id: '',
@@ -31,14 +33,29 @@ function blank() {
 watch(
   () => props.task,
   (task) => {
-    form.value = task ? { ...blank(), ...task, name: task.name || '' } : blank()
+    form.value = task
+      ? { ...blank(), ...task, name: task.name || '', account_id: task.account_id || '' }
+      : blank()
   },
   { immediate: true }
 )
 
+onMounted(async () => {
+  try {
+    accounts.value = await api.listAccounts()
+    // default to the first account so most users never touch this field
+    if (!form.value.account_id && !props.task && accounts.value.length) {
+      form.value.account_id = accounts.value[0].id
+    }
+  } catch {
+    /* the field simply stays empty; the backend falls back to the default account */
+  }
+})
+
 const EDITABLE_FIELDS = [
   'name',
   'enabled',
+  'account_id',
   'target_type',
   'bot_username',
   'group_id',
@@ -59,6 +76,7 @@ async function submit() {
       payload[key] = form.value[key] === '' ? null : form.value[key]
     })
     payload.name = (form.value.name || '').trim()
+    payload.account_id = form.value.account_id ? Number(form.value.account_id) : null
 
     if (payload.target_type === 'bot') payload.group_id = null
     else payload.bot_username = null
@@ -97,6 +115,20 @@ async function submit() {
         <div class="field">
           <label class="label">任务备注</label>
           <input v-model="form.name" class="input" placeholder="例如：社工库签到" />
+        </div>
+
+        <div class="field">
+          <label class="label">执行账号</label>
+          <select v-model="form.account_id" class="select">
+            <option value="">默认账号（第一个已启用的）</option>
+            <option v-for="a in accounts" :key="a.id" :value="a.id">
+              {{ a.name }}{{ a.phone ? ` · ${a.phone}` : '' }}{{ a.has_session ? '' : '（未登录）' }}
+            </option>
+          </select>
+          <div class="hint">
+            该任务会用这个账号的身份执行。
+            <template v-if="!accounts.length">还没有账号，先去「Telegram 账号」页面添加。</template>
+          </div>
         </div>
 
         <div class="field">
